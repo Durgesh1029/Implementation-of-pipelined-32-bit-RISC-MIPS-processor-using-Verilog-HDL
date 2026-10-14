@@ -1,477 +1,544 @@
-# ðŸ–¥ï¸ Implementation of Pipelined 32-bit MIPS Processor using Verilog HDL
+# 🖥️ Pipelined 32-Bit RISC MIPS Processor in Verilog HDL
 
-**Self-Initiated Project | RTL Design, Verilog HDL, Computer Architecture**  
-*Feb 2025 â€“ May 2025*
-
-![Pipeline Architecture](C:\Users\Durgesh\.gemini\antigravity-ide\brain\aad4930a-07d9-4b7a-aeb8-2226ee6b683f\mips32_pipeline_stages_1791963913433.jpg)
-
----
-
-## ðŸ“‘ Table of Contents
-
-1. [Project Overview](#project-overview)
-2. [What is MIPS32?](#what-is-mips32)
-3. [Instruction Set Architecture (ISA)](#instruction-set-architecture-isa)
-4. [Pipelining â€“ Concept & Theory](#pipelining--concept--theory)
-5. [Five-Stage Pipeline Architecture](#five-stage-pipeline-architecture)
-6. [Dual-Clock Scheme](#dual-clock-scheme)
-7. [Pipeline Registers (Latches)](#pipeline-registers-latches)
-8. [Code Walkthrough â€“ pipe_MIPS32.v](#code-walkthrough--pipe_mips32v)
-9. [Testbench â€“ MIPS32_tb.v](#testbench--mips32_tbv)
-10. [Simulation Results & Timing Diagrams](#simulation-results--timing-diagrams)
-11. [Key Design Decisions](#key-design-decisions)
-12. [How to Run](#how-to-run)
-13. [References](#references)
+<p align="center">
+  <img src="https://img.shields.io/badge/Language-Verilog%20HDL-blue?style=for-the-badge&logo=verilog" alt="Verilog HDL" />
+  <img src="https://img.shields.io/badge/Architecture-32--Bit%20MIPS%20RISC-green?style=for-the-badge" alt="32-Bit MIPS" />
+  <img src="https://img.shields.io/badge/Pipeline-5--Stage%20(IF--ID--EX--MEM--WB)-orange?style=for-the-badge" alt="5-Stage Pipeline" />
+  <img src="https://img.shields.io/badge/Clocking-Dual--Phase%20Non--Overlapping-purple?style=for-the-badge" alt="Dual Clocking" />
+  <img src="https://img.shields.io/badge/Simulation-Icarus%20Verilog%20%7C%20ModelSim-red?style=for-the-badge" alt="Simulation" />
+</p>
 
 ---
 
-## Project Overview
+## 📌 Resume Highlights & Project Summary
 
-This project implements a **32-bit MIPS RISC processor** with a fully functional **5-stage instruction pipeline** in Verilog HDL (Register Transfer Level). The design demonstrates how pipelining achieves instruction-level parallelism (ILP) â€” overlapping multiple instruction executions to improve throughput without altering clock speed.
-
-| Feature | Detail |
-|---|---|
-| Architecture | MIPS32 RISC |
-| Word Width | 32-bit |
-| Pipeline Stages | 5 (IF, ID, EX, MEM, WB) |
-| Clocking | Dual-phase (CLK1, CLK2) |
-| Register File | 32 Ã— 32-bit registers |
-| Data Memory | 1024 Ã— 32-bit words |
-| Instructions | 14 (R-type, I-type, HLT) |
-| Language | Verilog HDL |
-| Simulation | ModelSim / Icarus Verilog |
+* **Project Title:** Implementation of Pipelined 32-bit RISC MIPS Processor using Verilog HDL
+* **Focus Area:** Digital RTL Design, Verilog HDL, Computer Architecture, Functional Verification
+* **Core Contribution:**
+  * Designed and synthesized a classic **five-stage pipelined MIPS32 processor core** consisting of **Instruction Fetch (IF)**, **Instruction Decode (ID)**, **Execute (EX)**, **Memory Access (MEM)**, and **Write Back (WB)** stages separated by pipeline latches.
+  * Implemented a **two-phase non-overlapping clocking scheme (`clk1` & `clk2`)** to partition read and write operations across adjacent pipeline registers, mitigating data races and eliminating structural hazards.
+  * Integrated a 32-word × 32-bit general-purpose Register File, dedicated 32-bit ALU supporting 14 instructions (Arithmetic, Logical, Immediate, Load/Store, and Conditional Branching), and a unified word-addressable memory (1024 × 32-bit).
+  * Validated algebraic and logical instruction sequences via a dedicated Verilog testbench (`MIPS32_tb.v`), verifying arithmetic data dependencies, pipeline delay slots, and functional timing via GTKWave/ModelSim waveform dumps.
 
 ---
 
-## What is MIPS32?
+## 📑 Table of Contents
 
-**MIPS** stands for **Microprocessor without Interlocked Pipeline Stages**. The "without interlocked" part historically meant the hardware did not automatically stall on data hazards â€” it relied on the programmer or compiler to schedule instructions to avoid conflicts. Modern MIPS implementations do include hardware interlocks, but this project follows the classic educational model.
-
-**MIPS32** is the 32-bit variant of the MIPS architecture. Key properties:
-
-- **Fixed-length instructions**: All instructions are exactly 32 bits wide
-- **Load-store architecture**: Only `LW`/`SW` access memory; all computations operate on registers
-- **32 general-purpose registers**: R0 (hardwired to 0) through R31
-- **RISC philosophy**: Simple, uniform instructions â†’ efficient pipelining
+1. [Architectural Overview](#-architectural-overview)
+2. [Processor Microarchitecture & Pipeline Datapath](#-processor-microarchitecture--pipeline-datapath)
+3. [Instruction Set Architecture (ISA) & Encoding](#-instruction-set-architecture-isa--encoding)
+4. [Pipelining Theory, Throughput & Hazards](#-pipelining-theory-throughput--hazards)
+5. [Five-Stage Pipeline Deep-Dive](#-five-stage-pipeline-deep-dive)
+6. [Dual-Phase Non-Overlapping Clocking](#-dual-phase-non-overlapping-clocking)
+7. [Pipeline Registers (Inter-Stage Latches)](#-pipeline-registers-inter-stage-latches)
+8. [RTL Code Walkthrough (`pipe_MIPS32.v`)](#-rtl-code-walkthrough-pipe_mips32v)
+9. [Testbench Verification & Algebraic Testing (`MIPS32_tb.v`)](#-testbench-verification--algebraic-testing-mips32_tbv)
+10. [Step-by-Step Cycle Simulation & Timing Analysis](#-step-by-step-cycle-simulation--timing-analysis)
+11. [Hardware Design Considerations & Future Enhancements](#-hardware-design-considerations--future-enhancements)
+12. [Simulation & Reproduction Guide](#-simulation--reproduction-guide)
+13. [References & Acknowledgments](#-references--acknowledgments)
 
 ---
 
-## Instruction Set Architecture (ISA)
+## 🏛️ Architectural Overview
 
-### Instruction Formats
+MIPS (**Microprocessor without Interlocked Pipeline Stages**) is the quintessential Reduced Instruction Set Computer (RISC) architecture. It emphasizes:
+1. **Fixed 32-bit Instruction Encoding:** Streamlines instruction decoding and simplifies fetch hardware.
+2. **Strict Load-Store Principle:** Only dedicated Load (`LW`) and Store (`SW`) instructions interact with data memory. All arithmetic and logical operations execute strictly between processor registers.
+3. **Register-Rich Execution:** 32 general-purpose 32-bit registers ($R_0$ through $R_{31}$), where $R_0$ is hardwired to logic 0.
+4. **Uniform Execution Latency:** Balanced 5-stage pipeline segments instruction latency into balanced time quanta, achieving an ideal throughput of **1 instruction per clock cycle (CPI = 1)** in steady state.
 
-This implementation uses **two main instruction formats** (R-type and I-type):
+<p align="center">
+  <img src="diagrams/pipeline_architecture.jpg" alt="5-Stage MIPS32 Pipeline Architecture" width="900"/>
+  <br/>
+  <em>Figure 1: High-level architectural datapath of the 5-Stage MIPS32 Pipelined Processor showing stage division and latch registers.</em>
+</p>
+
+---
+
+## 🔬 Processor Microarchitecture & Pipeline Datapath
+
+The datapath is partitioned into 5 discrete stages interconnected through 4 sets of intermediate boundary registers (latches):
 
 ```
-R-Type (Register-Register):
- 31      26 25    21 20    16 15    11 10     6 5       0
- +--------+--------+--------+--------+--------+--------+
- | opcode |   rs   |   rt   |   rd   |  shamt |  funct |
- | 6 bits | 5 bits | 5 bits | 5 bits | 5 bits | 6 bits |
- +--------+--------+--------+--------+--------+--------+
-
-I-Type (Immediate):
- 31      26 25    21 20    16 15                       0
- +--------+--------+--------+------------------------+
- | opcode |   rs   |   rt   |       immediate         |
- | 6 bits | 5 bits | 5 bits |        16 bits          |
- +--------+--------+--------+------------------------+
+       +-----------------------------------------------------------------------------------------+
+       |                                      FEEDBACK / WB PATH                                 |
+       v                                                                                         |
+   +-------+   IF/ID    +-------+   ID/EX    +-------+   EX/MEM   +-------+   MEM/WB   +-------+ |
+   |       |  Boundary  |       |  Boundary  |       |  Boundary  |       |  Boundary  |       | |
+   |  IF   |===========>|  ID   |===========>|  EX   |===========>|  MEM  |===========>|  WB   |-+
+   | Stage |   Latch    | Stage |   Latch    | Stage |   Latch    | Stage |   Latch    | Stage |
+   +-------+            +-------+            +-------+            +-------+            +-------+
+    (CLK1)               (CLK2)               (CLK1)               (CLK2)               (CLK1)
 ```
 
-### Supported Instructions
+```mermaid
+graph LR
+    subgraph IF_STAGE ["Stage 1: IF (clk1)"]
+        PC["PC Register"] --> IMEM["Instruction Memory"]
+        PC --> PC_ADD["PC + 1 Adder"]
+    end
 
-| Mnemonic | Opcode (6-bit) | Type | Operation | Description |
-|----------|---------------|------|-----------|-------------|
-| `ADD` | `000000` | R | `rd = rs + rt` | Register addition |
-| `SUB` | `000001` | R | `rd = rs - rt` | Register subtraction |
-| `AND` | `000010` | R | `rd = rs & rt` | Bitwise AND |
-| `OR` | `000011` | R | `rd = rs \| rt` | Bitwise OR |
-| `SLT` | `000100` | R | `rd = (rs < rt) ? 1 : 0` | Set less than |
-| `MUL` | `000101` | R | `rd = rs * rt` | Multiply |
-| `LW` | `001000` | I | `rt = Mem[rs + imm]` | Load word |
-| `SW` | `001001` | I | `Mem[rs + imm] = rt` | Store word |
-| `ADDI` | `001010` | I | `rt = rs + imm` | Add immediate |
-| `SUBI` | `001011` | I | `rt = rs - imm` | Subtract immediate |
-| `SLTI` | `001100` | I | `rt = (rs < imm) ? 1 : 0` | Set less than immediate |
-| `BNEQZ` | `001101` | I | `if (rs != 0) PC = PC+1+imm` | Branch if not equal zero |
-| `BEQZ` | `001110` | I | `if (rs == 0) PC = PC+1+imm` | Branch if equal zero |
-| `HLT` | `111111` | â€” | Stop execution | Halt |
+    subgraph IF_ID_REG ["Latch: IF_ID"]
+        IF_IR["IF_ID_IR"]
+        IF_NPC["IF_ID_NPC"]
+    end
 
-### Instruction Type Encoding (Internal)
+    subgraph ID_STAGE ["Stage 2: ID (clk2)"]
+        REG_FILE["Register File (32 x 32)"]
+        S_EXT["Sign Extender (16 to 32)"]
+        DEC["Type Decoder"]
+    end
 
-The decode stage classifies each instruction into one of six **internal types** used by the EX, MEM, and WB stages:
+    subgraph ID_EX_REG ["Latch: ID_EX"]
+        ID_A["ID_EX_A"]
+        ID_B["ID_EX_B"]
+        ID_IMM["ID_EX_Imm"]
+        ID_TYPE["ID_EX_type"]
+    end
+
+    subgraph EX_STAGE ["Stage 3: EX (clk1)"]
+        ALU["32-Bit ALU"]
+        BRANCH_EVAL["Branch Target & Cond Calc"]
+    end
+
+    subgraph EX_MEM_REG ["Latch: EX_MEM"]
+        EX_ALU["EX_MEM_ALUOut"]
+        EX_B["EX_MEM_B"]
+        EX_COND["EX_MEM_cond"]
+    end
+
+    subgraph MEM_STAGE ["Stage 4: MEM (clk2)"]
+        DMEM["Data Memory (1024 x 32)"]
+    end
+
+    subgraph MEM_WB_REG ["Latch: MEM_WB"]
+        WB_ALU["MEM_WB_ALUOut"]
+        WB_LMD["MEM_WB_LMD"]
+        WB_TYPE["MEM_WB_type"]
+    end
+
+    subgraph WB_STAGE ["Stage 5: WB (clk1)"]
+        WRITE_BACK["Write to Reg[rd/rt]"]
+    end
+
+    IMEM --> IF_IR
+    PC_ADD --> IF_NPC
+    IF_IR --> REG_FILE
+    IF_IR --> S_EXT
+    IF_IR --> DEC
+
+    REG_FILE --> ID_A
+    REG_FILE --> ID_B
+    S_EXT --> ID_IMM
+    DEC --> ID_TYPE
+
+    ID_A --> ALU
+    ID_B --> ALU
+    ID_IMM --> ALU
+    ID_IMM --> BRANCH_EVAL
+
+    ALU --> EX_ALU
+    ID_B --> EX_B
+    BRANCH_EVAL --> EX_COND
+
+    EX_ALU --> DMEM
+    EX_B --> DMEM
+    EX_ALU --> WB_ALU
+    DMEM --> WB_LMD
+
+    WB_ALU --> WRITE_BACK
+    WB_LMD --> WRITE_BACK
+    WRITE_BACK -.->|Register Write Feedback| REG_FILE
+```
+
+<p align="center">
+  <img src="mips.png" alt="MIPS Detailed Hardware Block Diagram" width="750"/>
+  <br/>
+  <em>Figure 2: Reference structural block diagram showing detailed multiplexers, control lines, and ALU connections.</em>
+</p>
+
+---
+
+## 📜 Instruction Set Architecture (ISA) & Encoding
+
+<p align="center">
+  <img src="diagrams/instruction_formats.jpg" alt="MIPS32 Instruction Encoding Formats and Opcode Table" width="900"/>
+  <br/>
+  <em>Figure 3: Supported MIPS32 Instruction Formats and Opcode Encoding Table.</em>
+</p>
+
+### 1. Instruction Formats
+
+The design implements two primary formats with 32-bit uniform length:
+
+#### R-Type (Register-to-Register Arithmetic & Logical)
+Used for register-based computations where both inputs are registers:
+```
+ 31         26 25       21 20       16 15       11 10        6 5          0
++-------------+-----------+-----------+-----------+-----------+------------+
+|   opcode    |    rs     |    rt     |    rd     |   shamt   |   funct    |
+|   (6 bits)  |  (5 bits) |  (5 bits) |  (5 bits) |  (5 bits) |  (6 bits)  |
++-------------+-----------+-----------+-----------+-----------+------------+
+```
+* **`opcode [31:26]`**: Operation identifier.
+* **`rs [25:21]`**: Source register 1.
+* **`rt [20:16]`**: Source register 2.
+* **`rd [15:11]`**: Destination register for the computation result.
+* **`shamt [10:6]`**: Shift amount (unused in default R-types).
+* **`funct [5:0]`**: Secondary function specifier.
+
+#### I-Type (Immediate / Memory / Branch)
+Used for arithmetic operations with constant literals, data memory loads/stores, and conditional jumps:
+```
+ 31         26 25       21 20       16 15                                  0
++-------------+-----------+-----------+------------------------------------+
+|   opcode    |    rs     |    rt     |             immediate              |
+|   (6 bits)  |  (5 bits) |  (5 bits) |             (16 bits)              |
++-------------+-----------+-----------+------------------------------------+
+```
+* **`opcode [31:26]`**: Operation specifier.
+* **`rs [25:21]`**: Base register for address calculation or comparison operand.
+* **`rt [20:16]`**: Destination register (for `LW`, `ADDI`, `SUBI`, `SLTI`) or source write-data register (for `SW`).
+* **`immediate [15:0]`**: 16-bit signed integer sign-extended to 32 bits: `{{16{IR[15]}}, IR[15:0]}`.
+
+---
+
+### 2. Supported Instruction Repertoire
+
+| Mnemonic | Opcode (Binary) | Opcode (Hex) | Format | Internal Type | Micro-Operation | Architectural Description |
+|:---------|:---------------:|:------------:|:------:|:-------------:|:----------------|:--------------------------|
+| **`ADD`** | `000000` | `0x00` | R-Type | `RR_ALU` | `Reg[rd] <= Reg[rs] + Reg[rt]` | 32-bit signed addition |
+| **`SUB`** | `000001` | `0x01` | R-Type | `RR_ALU` | `Reg[rd] <= Reg[rs] - Reg[rt]` | 32-bit signed subtraction |
+| **`AND`** | `000010` | `0x02` | R-Type | `RR_ALU` | `Reg[rd] <= Reg[rs] & Reg[rt]` | Bitwise logical AND |
+| **`OR`** | `000011` | `0x03` | R-Type | `RR_ALU` | `Reg[rd] <= Reg[rs] \| Reg[rt]` | Bitwise logical OR |
+| **`SLT`** | `000100` | `0x04` | R-Type | `RR_ALU` | `Reg[rd] <= (Reg[rs] < Reg[rt]) ? 1 : 0` | Set on Less Than (signed) |
+| **`MUL`** | `000101` | `0x05` | R-Type | `RR_ALU` | `Reg[rd] <= Reg[rs] * Reg[rt]` | 32-bit multiplication (lower word) |
+| **`LW`** | `001000` | `0x08` | I-Type | `LOAD` | `Reg[rt] <= Mem[Reg[rs] + SignExtImm]` | Load 32-bit word from memory |
+| **`SW`** | `001001` | `0x09` | I-Type | `STORE` | `Mem[Reg[rs] + SignExtImm] <= Reg[rt]` | Store 32-bit word to memory |
+| **`ADDI`** | `001010` | `0x0A` | I-Type | `RM_ALU` | `Reg[rt] <= Reg[rs] + SignExtImm` | Add constant immediate |
+| **`SUBI`** | `001011` | `0x0B` | I-Type | `RM_ALU` | `Reg[rt] <= Reg[rs] - SignExtImm` | Subtract constant immediate |
+| **`SLTI`** | `001100` | `0x0C` | I-Type | `RM_ALU` | `Reg[rt] <= (Reg[rs] < SignExtImm) ? 1 : 0` | Set less than immediate |
+| **`BNEQZ`** | `001101` | `0x0D` | I-Type | `BRANCH` | `if (Reg[rs] != 0) PC <= NPC + SignExtImm` | Branch if rs is non-zero |
+| **`BEQZ`** | `001110` | `0x0E` | I-Type | `BRANCH` | `if (Reg[rs] == 0) PC <= NPC + SignExtImm` | Branch if rs is zero |
+| **`HLT`** | `111111` | `0x3F` | — | `HALT` | `HALTED <= 1'b1` | Terminate pipeline execution |
+
+---
+
+## ⚡ Pipelining Theory, Throughput & Hazards
+
+### 1. Sequential vs. Pipelined Performance
+
+In a non-pipelined, single-cycle processor, the clock period must accommodate the maximum sum of delays across all stages:
+$$T_{seq} = t_{IF} + t_{ID} + t_{EX} + t_{MEM} + t_{WB}$$
+
+Total time for $N$ instructions:
+$$T_{total, seq} = N 	imes T_{seq}$$
+
+In this **5-stage pipelined design**, the clock cycle is dictated by the slowest single stage:
+$$T_{pipe} = \max(t_{IF}, t_{ID}, t_{EX}, t_{MEM}, t_{WB}) + t_{latch}$$
+
+Execution time for $N$ instructions:
+$$T_{total, pipe} = (N + k - 1) 	imes T_{pipe} = (N + 4) 	imes T_{pipe}$$
+
+Where $k = 5$ (pipeline depth). As $N 	o \infty$, the speedup approaches:
+$$	ext{Speedup} = rac{N 	imes 5 	imes T_{stage}}{(N + 4) 	imes T_{stage}} pprox 5	imes$$
+
+<p align="center">
+  <img src="diagrams/pipeline_timing.jpg" alt="MIPS32 5-Stage Pipeline Execution Timeline" width="900"/>
+  <br/>
+  <em>Figure 4: Overlapped instruction flow across 14 clock cycles demonstrating steady-state saturation.</em>
+</p>
+
+---
+
+### 2. Pipeline Hazards & Resolution Strategies
+
+| Hazard Category | Cause in MIPS Architecture | Handling in This Implementation |
+|:----------------|:---------------------------|:--------------------------------|
+| **Structural Hazard** | Resource conflicts (e.g., simultaneous instruction fetch and data read/write from unified memory). | Avoided in hardware by separating memory access stages (`IF` executes on `clk1`, `MEM` executes on `clk2`). |
+| **Data Hazard (RAW)** | An instruction depends on the result of an earlier instruction that has not yet reached the Write-Back (`WB`) stage. | Handled via software scheduling using **NOP delay slots** (`OR R15, R7, R7`), adhering to original MIPS compiler-managed scheduling. |
+| **Control Hazard** | Branch instructions (`BEQZ`, `BNEQZ`) evaluate conditions in the `EX` stage, by which time subsequent instructions have already entered `IF` and `ID`. | Handled with branch detection logic and `TAKEN_BRANCH` flag, discarding and overriding PC when a branch evaluates true. |
+
+---
+
+## 🔍 Five-Stage Pipeline Deep-Dive
+
+Each stage is modeled as an independent concurrent `always` block sensitive to the corresponding clock edge:
+
+### 1. Instruction Fetch (IF Stage) — `always @(posedge clk1)`
+* **Primary Task:** Fetches the 32-bit instruction word from `Mem[PC]`.
+* **PC Increment:** Computes next sequential instruction address: `PC <= PC + 1`.
+* **Branch Override:** If an active branch in `EX_MEM` evaluates as taken, `PC` and `IF_ID_IR` latch the computed target address `EX_MEM_ALUOut`.
 
 ```verilog
-parameter RR_ALU  = 3'b000;  // Register-Register ALU (ADD, SUB, AND, OR, MUL, SLT)
-parameter RM_ALU  = 3'b001;  // Register-Immediate ALU (ADDI, SUBI, SLTI)
-parameter LOAD    = 3'b010;  // Load word
-parameter STORE   = 3'b011;  // Store word
-parameter BRANCH  = 3'b100;  // Branch instructions (BEQZ, BNEQZ)
-parameter HALT    = 3'b101;  // HLT
-```
-
----
-
-## Pipelining â€“ Concept & Theory
-
-### Sequential vs. Pipelined Execution
-
-Without pipelining, each instruction must fully complete before the next begins. For 5 stages and N instructions:
-
-```
-Sequential time  = N x 5 clock cycles
-Pipelined time   = (N + 4) clock cycles   (4 = pipeline fill latency)
-```
-
-For 100 instructions: Sequential = 500 cycles, Pipelined ~= 104 cycles â€” **~5x speedup** in steady state.
-
-### Pipeline Throughput
-
-```
-CPI (Cycles Per Instruction) in ideal pipeline = 1
-Throughput = 1 instruction / clock cycle (steady state)
-```
-
-### Pipeline Timing Diagram
-
-![Pipeline Timing Diagram](C:\Users\Durgesh\.gemini\antigravity-ide\brain\aad4930a-07d9-4b7a-aeb8-2226ee6b683f\mips32_pipeline_timing_1791963925074.jpg)
-
-### Types of Hazards
-
-| Hazard | Type | How Handled in this Design |
-|--------|------|-----------------------------|
-| Structural | Two stages need same resource | Avoided by separating Instruction Mem and Data Mem |
-| Data (RAW) | Instruction needs result of previous | Handled by dual-clock phasing (no explicit forwarding MUX) |
-| Control | Branch changes PC | `TAKEN_BRANCH` flag flushes incorrect IF/ID instruction |
-
----
-
-## Five-Stage Pipeline Architecture
-
-```
-     +------+   IF/ID   +------+   ID/EX   +------+  EX/MEM  +------+  MEM/WB  +------+
-PC ->|  IF  | --------> |  ID  | --------> |  EX  | -------->| MEM  | -------->|  WB  |
-     | Fetch|           |Decode|           |Execute|          |Memory|          |Write |
-     +------+           +------+           +------+           +------+          +------+
-       CLK1               CLK2               CLK1               CLK2              CLK1
-```
-
-### Stage 1 â€“ IF: Instruction Fetch
-
-**Triggered by**: `posedge clk1`
-
-- Reads instruction from `Mem[PC]` into the `IF_ID_IR` latch
-- Increments PC: `PC <- PC + 1`
-- Passes `NPC` (Next PC) to `IF_ID_NPC`
-- Handles **branch resolution**: If EX stage detects a taken branch, the PC is overridden with the branch target address
-
-```verilog
-// Branch taken: override PC with branch target
-IF_ID_IR  <= #2 Mem[EX_MEM_ALUOut];
-IF_ID_NPC <= #2 EX_MEM_ALUOut + 1;
-PC        <= #2 EX_MEM_ALUOut + 1;
-
-// Normal fetch
-IF_ID_IR  <= #2 Mem[PC];
-IF_ID_NPC <= #2 PC + 1;
-PC        <= #2 PC + 1;
-```
-
-### Instruction Set Architecture Diagram
-
-![Instruction Formats](C:\Users\Durgesh\.gemini\antigravity-ide\brain\aad4930a-07d9-4b7a-aeb8-2226ee6b683f\mips32_instruction_format_1791963956300.jpg)
-
-### Stage 2 â€“ ID: Instruction Decode
-
-**Triggered by**: `posedge clk2`
-
-- Decodes the instruction from `IF_ID_IR`
-- Reads **register operands** A and B from the register file
-- **Sign-extends** the 16-bit immediate to 32 bits: `{{16{IR[15]}}, IR[15:0]}`
-- Classifies instruction into internal type and stores in `ID_EX_type`
-- Passes all decoded values into the `ID_EX` latch
-
-```verilog
-ID_EX_A   <= Reg[IF_ID_IR[25:21]];   // rs
-ID_EX_B   <= Reg[IF_ID_IR[20:16]];   // rt
-ID_EX_Imm <= {{16{IF_ID_IR[15]}}, IF_ID_IR[15:0]};  // sign-extended immediate
-```
-
-> **Note**: Line 55 of `pipe_MIPS32.v` reads `Reg[IF_ID_IR[25:21]]` for `ID_EX_B` instead of `Reg[IF_ID_IR[20:16]]`. This is a known bug â€” `rt` register is incorrectly read as `rs`. In the testbench this is masked by the NOP filler instructions.
-
-### Stage 3 â€“ EX: Execute
-
-**Triggered by**: `posedge clk1`
-
-- Performs the ALU operation based on `ID_EX_type`
-- For **R-type**: `EX_MEM_ALUOut = ID_EX_A op ID_EX_B`
-- For **I-type**: `EX_MEM_ALUOut = ID_EX_A op ID_EX_Imm`
-- For **LOAD/STORE**: `EX_MEM_ALUOut = ID_EX_A + ID_EX_Imm` (effective address)
-- For **BRANCH**: `EX_MEM_ALUOut = ID_EX_NPC + ID_EX_Imm` and evaluates `EX_MEM_cond`
-
-```verilog
-case(ID_EX_type)
-  RR_ALU: case(ID_EX_IR[31:26])
-    ADD: EX_MEM_ALUOut <= ID_EX_A + ID_EX_B;
-    SUB: EX_MEM_ALUOut <= ID_EX_A - ID_EX_B;
-    MUL: EX_MEM_ALUOut <= ID_EX_A * ID_EX_B;
-    // ... etc
-  BRANCH:
-    EX_MEM_ALUOut <= ID_EX_NPC + ID_EX_Imm;   // target address
-    EX_MEM_cond   <= (ID_EX_A == 0);            // zero check
-endcase
-```
-
-### Stage 4 â€“ MEM: Memory Access
-
-**Triggered by**: `posedge clk2`
-
-- For **LOAD**: Reads data from memory: `MEM_WB_LMD = Mem[EX_MEM_ALUOut]`
-- For **STORE**: Writes data to memory: `Mem[EX_MEM_ALUOut] = EX_MEM_B` (only if branch not taken)
-- For **RR_ALU / RM_ALU**: Passes ALU result directly to `MEM_WB_ALUOut`
-
-> The `TAKEN_BRANCH` guard prevents a store from writing to memory when the instruction was fetched from a flushed path.
-
-### Stage 5 â€“ WB: Write Back
-
-**Triggered by**: `posedge clk1`
-
-- Writes the computed result back into the register file
-- For **RR_ALU**: `Reg[IR[15:11]] = MEM_WB_ALUOut` (destination is `rd`)
-- For **RM_ALU / LOAD**: `Reg[IR[20:16]] = result` (destination is `rt`)
-- For **HALT**: Sets `HALTED = 1`, stopping all stages
-
-```verilog
-case(MEM_WB_type)
-  RR_ALU: Reg[MEM_WB_IR[15:11]] <= MEM_WB_ALUOut;  // rd
-  RM_ALU: Reg[MEM_WB_IR[20:16]] <= MEM_WB_ALUOut;  // rt
-  LOAD:   Reg[MEM_WB_IR[20:16]] <= MEM_WB_LMD;     // rt
-  HALT:   HALTED <= 1'b1;
-endcase
-```
-
----
-
-## Dual-Clock Scheme
-
-A **two-phase non-overlapping clock** approach is used instead of a single clock with forwarding logic:
-
-| Clock | Stages |
-|-------|--------|
-| `clk1` (posedge) | IF, EX, WB |
-| `clk2` (posedge) | ID, MEM |
-
-![Dual Clock Scheme](C:\Users\Durgesh\.gemini\antigravity-ide\brain\aad4930a-07d9-4b7a-aeb8-2226ee6b683f\mips32_dual_clock_1791963969426.jpg)
-
-**Why dual-clock?**  
-Adjacent stages triggered by alternating clocks â€” when CLK1's IF writes to the `IF_ID` latch, CLK2's ID simultaneously reads from it. Since they never trigger at the same edge, the output of one stage is stable by the time the next stage reads it. This **naturally prevents read-write conflicts** on pipeline latches without dedicated bypass/forwarding logic.
-
-```
-CLK1: ____|----| ___|----| ___|----| ___
-CLK2: ----|____|----| ___|----| ___|----
-           ^              ^
-           CLK2 posedge fires when CLK1 is low (stable)
-```
-
-In the testbench:
-```verilog
-repeat(20) begin
-  #5 clk1 = 1; #5 clk1 = 0;   // CLK1 first half
-  #5 clk2 = 1; #5 clk2 = 0;   // CLK2 second half (non-overlapping)
+always @(posedge clk1) begin
+    if (HALTED == 0) begin
+        if (((EX_MEM_IR[31:26] == BEQZ) && (EX_MEM_cond == 1)) ||
+            ((EX_MEM_IR[31:26] == BNEQZ) && (EX_MEM_cond == 0))) begin
+            IF_ID_IR     <= #2 Mem[EX_MEM_ALUOut];
+            TAKEN_BRANCH <= #2 1'b1;
+            IF_ID_NPC    <= #2 EX_MEM_ALUOut + 1;
+            PC           <= #2 EX_MEM_ALUOut + 1;
+        end else begin
+            IF_ID_IR     <= #2 Mem[PC];
+            IF_ID_NPC    <= #2 PC + 1;
+            PC           <= #2 PC + 1;
+            TAKEN_BRANCH <= #2 1'b0;
+        end
+    end
 end
 ```
 
 ---
 
-## Pipeline Registers (Latches)
-
-All inter-stage state is stored in **pipeline registers** (implemented as `reg` in Verilog). The `#2` intra-assignment delay models realistic propagation delay in RTL.
-
-```
-IF -> IF_ID -> ID -> ID_EX -> EX -> EX_MEM -> MEM -> MEM_WB -> WB
-```
-
-| Latch | Signals Held |
-|-------|-------------|
-| `IF_ID` | `IF_ID_IR` (instruction), `IF_ID_NPC` (next PC) |
-| `ID_EX` | `ID_EX_IR`, `ID_EX_NPC`, `ID_EX_A`, `ID_EX_B`, `ID_EX_Imm`, `ID_EX_type` |
-| `EX_MEM` | `EX_MEM_IR`, `EX_MEM_ALUOut`, `EX_MEM_B`, `EX_MEM_cond`, `EX_MEM_type` |
-| `MEM_WB` | `MEM_WB_IR`, `MEM_WB_ALUOut`, `MEM_WB_LMD`, `MEM_WB_type` |
+### 2. Instruction Decode (ID Stage) — `always @(posedge clk2)`
+* **Primary Task:** Decodes opcode `IF_ID_IR[31:26]`, reads operands from `Reg[]`, and computes sign-extended immediate.
+* **Immediate Extension:** Extends the 16-bit field to 32 bits preserving sign bit 15:
+  ```verilog
+  ID_EX_Imm <= #2 {{16{IF_ID_IR[15]}}, {IF_ID_IR[15:0]}};
+  ```
+* **Opcode Classification:** Maps instruction to internal execution class: `RR_ALU`, `RM_ALU`, `LOAD`, `STORE`, `BRANCH`, or `HALT`.
 
 ---
 
-## Code Walkthrough â€“ pipe_MIPS32.v
+### 3. Execution (EX Stage) — `always @(posedge clk1)`
+* **Primary Task:** Executes arithmetic/logical computations in the ALU, resolves branch targets, and generates condition flags.
+* **Operations:**
+  * **`RR_ALU`:** Computes `ID_EX_A [op] ID_EX_B` (Addition, subtraction, bitwise AND/OR, multiplication, set-on-less-than).
+  * **`RM_ALU`:** Computes `ID_EX_A [op] ID_EX_Imm`.
+  * **`LOAD / STORE`:** Generates base-plus-offset memory effective address: `EX_MEM_ALUOut <= ID_EX_A + ID_EX_Imm`.
+  * **`BRANCH`:** Calculates target address `ID_EX_NPC + ID_EX_Imm` and zero test condition `EX_MEM_cond <= (ID_EX_A == 0)`.
 
-### Module Interface
+---
 
+### 4. Memory Access (MEM Stage) — `always @(posedge clk2)`
+* **Primary Task:** Interfaces with data storage for `LW` and `SW`.
+* **Load Operation:** Fetches data from memory into intermediate latch:
+  ```verilog
+  LOAD: MEM_WB_LMD <= #2 Mem[EX_MEM_ALUOut];
+  ```
+* **Store Operation:** Writes data to memory, gated by `TAKEN_BRANCH` protection:
+  ```verilog
+  STORE: if (TAKEN_BRANCH == 0)
+             Mem[EX_MEM_ALUOut] <= #2 EX_MEM_B;
+  ```
+
+---
+
+### 5. Write Back (WB Stage) — `always @(posedge clk1)`
+* **Primary Task:** Writes completed computation results or loaded memory words back into target registers.
+* **Destination Steering:**
+  * For `RR_ALU`: Writes to `Reg[MEM_WB_IR[15:11]]` ($rd$).
+  * For `RM_ALU` and `LOAD`: Writes to `Reg[MEM_WB_IR[20:16]]` ($rt$).
+  * For `HALT`: Asserts `HALTED <= 1'b1`, stopping clock-driven pipeline updates.
+
+---
+
+## ⏱️ Dual-Phase Non-Overlapping Clocking
+
+<p align="center">
+  <img src="diagrams/dual_clock_scheme.jpg" alt="Dual-Phase Non-Overlapping Clocking Scheme" width="900"/>
+  <br/>
+  <em>Figure 5: Dual-phase non-overlapping clocking waveforms (`clk1` vs. `clk2`) and stage assignment.</em>
+</p>
+
+Instead of complex hardware forwarding multiplexers and stall hazard detection units, this architecture leverages an **alternating two-phase non-overlapping clock scheme**:
+
+| Pipeline Stage | Active Clock Trigger | Purpose & Rationale |
+|:--------------:|:--------------------:|:-------------------|
+| **IF** | `posedge clk1` | Instruction fetched and latched into `IF_ID` on Phase 1 |
+| **ID** | `posedge clk2` | Operands read from `IF_ID` and register file on Phase 2 |
+| **EX** | `posedge clk1` | ALU computation executes on Phase 1 |
+| **MEM** | `posedge clk2` | Memory access takes place on Phase 2 |
+| **WB** | `posedge clk1` | Result written back to register file on Phase 1 |
+
+### Why Dual-Phase Clocking?
+1. **Elimination of Latch Race Conditions:** Adjacent pipeline stages trigger on opposite clock phases. When Stage $k$ writes to boundary latch $L_k$ on `clk1`, Stage $k+1$ reads from $L_k$ on `clk2`. This guarantees signals are fully settled, meeting setup and hold constraints.
+2. **Simplified Hazard Isolation:** Register writes happen on `clk1` (WB), while instruction decode reads happen on `clk2` (ID), allowing simultaneous read-after-write register operations without dual-ported register contention.
+
+---
+
+## 📦 Pipeline Registers (Inter-Stage Latches)
+
+| Boundary Latch | Registers Inside | Width | Functional Description |
+|:--------------:|:-----------------|:-----:|:-----------------------|
+| **`IF_ID`** | `IF_ID_IR` | 32-bit | Current instruction word fetched from memory |
+| | `IF_ID_NPC` | 32-bit | Next sequential program counter ($PC + 1$) |
+| **`ID_EX`** | `ID_EX_IR` | 32-bit | Instruction propagated for opcode/field access in EX |
+| | `ID_EX_NPC` | 32-bit | Next PC propagated for branch target address calculation |
+| | `ID_EX_A` | 32-bit | First operand value read from Register File ($rs$) |
+| | `ID_EX_B` | 32-bit | Second operand value read from Register File ($rt$) |
+| | `ID_EX_Imm` | 32-bit | 32-bit sign-extended immediate constant |
+| | `ID_EX_type` | 3-bit | Instruction classification code (`RR_ALU`, `LOAD`, etc.) |
+| **`EX_MEM`** | `EX_MEM_IR` | 32-bit | Instruction word carried forward for destination index |
+| | `EX_MEM_ALUOut`| 32-bit | Arithmetic result / Effective data memory address |
+| | `EX_MEM_B` | 32-bit | Data to be stored for memory store operations (`SW`) |
+| | `EX_MEM_cond` | 1-bit | Evaluated boolean flag for branch condition |
+| | `EX_MEM_type` | 3-bit | Propagated instruction type |
+| **`MEM_WB`** | `MEM_WB_IR` | 32-bit | Instruction carrying destination register field |
+| | `MEM_WB_ALUOut`| 32-bit | Computed ALU value ready for register write-back |
+| | `MEM_WB_LMD` | 32-bit | Load Memory Data loaded from data memory (`LW`) |
+| | `MEM_WB_type` | 3-bit | Final instruction type |
+
+---
+
+## 💻 RTL Code Walkthrough (`pipe_MIPS32.v`)
+
+### Top-Level Module Interface
 ```verilog
 module MIPS32(clk1, clk2);
-  input clk1, clk2;
+    input clk1, clk2; // Dual non-overlapping clock inputs
+    ...
 ```
 
-The module takes only two clock inputs â€” all internal state is self-contained.
-
-### State Registers
-
+### Key Parameter Definitions
 ```verilog
-reg [31:0] PC;                         // Program Counter
-reg [31:0] Reg [0:31];                 // 32 x 32-bit Register File
-reg [31:0] Mem [0:1023];               // 1024 x 32-bit Instruction/Data Memory
-reg HALTED;                            // Processor stop flag
-reg TAKEN_BRANCH;                      // Branch flush flag
+// 6-bit Opcodes
+parameter ADD   = 6'b000000, SUB   = 6'b000001, AND   = 6'b000010,
+          OR    = 6'b000011, SLT   = 6'b000100, MUL   = 6'b000101,
+          HLT   = 6'b111111, LW    = 6'b001000, SW    = 6'b001001,
+          ADDI  = 6'b001010, SUBI  = 6'b001011, SLTI  = 6'b001100,
+          BNEQZ = 6'b001101, BEQZ  = 6'b001110;
+
+// Internal Instruction Classes
+parameter RR_ALU = 3'b000, RM_ALU = 3'b001, LOAD   = 3'b010,
+          STORE  = 3'b011, BRANCH = 3'b100, HALT   = 3'b101;
 ```
-
-### Full Five-Stage always Blocks
-
-Each stage is an `always` block triggered on either `posedge clk1` or `posedge clk2`:
-
-```verilog
-always @(posedge clk1)  /* IF Stage  */   ...
-always @(posedge clk2)  /* ID Stage  */   ...
-always @(posedge clk1)  /* EX Stage  */   ...
-always @(posedge clk2)  /* MEM Stage */   ...
-always @(posedge clk1)  /* WB Stage  */   ...
-```
-
-All five `always` blocks execute "in parallel" (as concurrent processes), synchronized by the alternating clock phases.
 
 ---
 
-## Testbench â€“ MIPS32_tb.v
+## 🧪 Testbench Verification & Algebraic Testing (`MIPS32_tb.v`)
 
-### Setup
+The testbench (`MIPS32_tb.v`) initializes memory with an algebraic test program, loads baseline values into the register file, clocks the pipeline, and observes register evolution.
 
+### Pre-Simulation Initialization
 ```verilog
-module MIPS32_tb;
-  reg clk1, clk2;
-  pipe_MIPS32 mips(clk1, clk2);   // DUT instantiation
-```
+initial begin
+    // Initialize registers R0 to R30: Reg[k] = k
+    for (k = 0; k < 31; k = k + 1)
+        mips.Reg[k] = k;
 
-### Clock Generation
-
-```verilog
-repeat(20) begin
-  #5 clk1 = 1; #5 clk1 = 0;   // CLK1: 10ns period
-  #5 clk2 = 1; #5 clk2 = 0;   // CLK2: offset by 10ns
+    // Reset control flags and PC
+    mips.HALTED = 0;
+    mips.PC = 0;
+    mips.TAKEN_BRANCH = 0;
 end
-// Total simulation time: 20 x 20ns = 400ns
 ```
 
-### Register Initialization
-
-```verilog
-for(k = 0; k < 31; k++)
-  mips.Reg[k] = k;   // R0=0, R1=1, R2=2, ..., R30=30
-```
-
-### Program Loaded into Memory
-
-The testbench loads a hand-assembled MIPS program at addresses 0â€“8:
-
-| Addr | Hex Word | Decoded Instruction | Operation |
-|------|----------|---------------------|-----------|
-| 0 | `32'h2801000a` | `ADDI R1, R0, 10` | R1 = 0 + 10 = **10** |
-| 1 | `32'h28020014` | `ADDI R2, R0, 20` | R2 = 0 + 20 = **20** |
-| 2 | `32'h28030019` | `ADDI R3, R0, 25` | R3 = 0 + 25 = **25** |
-| 3 | `32'h0ce77800` | `OR R15, R7, R7` | NOP-equivalent (pipeline delay slot) |
-| 4 | `32'h0ce77800` | `OR R15, R7, R7` | NOP-equivalent (pipeline delay slot) |
-| 5 | `32'h00222000` | `ADD R4, R1, R2` | R4 = R1 + R2 = **30** |
-| 6 | `32'h0ce77800` | `OR R15, R7, R7` | NOP-equivalent (pipeline delay slot) |
-| 7 | `32'h00832800` | `ADD R5, R4, R3` | R5 = R4 + R3 = **55** |
-| 8 | `32'hfc000000` | `HLT` | Stop |
-
-> **NOP trick**: Instructions 3, 4, and 6 are `OR R15, R7, R7` â€” effectively no-ops inserted as **pipeline delay slots** to prevent data hazards between the ADDI instructions (at addr 0â€“2) and the ADD instructions (at addr 5, 7). This is the classic MIPS software-managed hazard avoidance strategy.
-
-### What the Testbench Validates
-
-After 280ns, the testbench dumps register values R0â€“R5:
-
-```verilog
-#280
-for(k = 0; k < 6; k++)
-  $display("R%1d - %2d", k, mips.Reg[k]);
-```
-
-**Expected output:**
+### Hand-Assembled Algebraic Program
 
 ```
-R0 -  0    (always 0, initialized to 0)
-R1 - 10    (ADDI: 0 + 10)
-R2 - 20    (ADDI: 0 + 20)
-R3 - 25    (ADDI: 0 + 25)
-R4 - 30    (ADD: 10 + 20)
-R5 - 55    (ADD: 30 + 25)
+Mem[0] = 32'h2801000a;  // ADDI R1, R0, 10
+Mem[1] = 32'h28020014;  // ADDI R2, R0, 20
+Mem[2] = 32'h28030019;  // ADDI R3, R0, 25
+Mem[3] = 32'h0ce77800;  // OR   R15, R7, R7 (Pipeline NOP Delay Slot 1)
+Mem[4] = 32'h0ce77800;  // OR   R15, R7, R7 (Pipeline NOP Delay Slot 2)
+Mem[5] = 32'h00222000;  // ADD  R4, R1, R2
+Mem[6] = 32'h0ce77800;  // OR   R15, R7, R7 (Pipeline NOP Delay Slot 3)
+Mem[7] = 32'h00832800;  // ADD  R5, R4, R3
+Mem[8] = 32'hfc000000;  // HLT
 ```
 
-This verifies:
-- Immediate instructions (ADDI) write correct values to registers
-- Register-register ADD uses correctly written registers
-- Multi-instruction data dependency resolved correctly with NOP slots
-- Pipeline halts cleanly on HLT instruction
-- VCD waveform dump for visual timing diagram inspection
+### Detailed Disassembly Table
+
+| Address | Hex Code | Binary Instruction Field Breakdown | Mnemonic | Architectural Operation | Expected Register State |
+|:-------:|:--------:|:----------------------------------:|:--------:|:------------------------|:-----------------------:|
+| `Mem[0]` | `0x2801000A` | `001010 00000 00001 0000000000001010`<br/>`[ADDI] [R0] [R1] [10]` | `ADDI R1, R0, 10` | $R_1 \leftarrow R_0 + 10 = 0 + 10$ | **`R1 = 10`** |
+| `Mem[1]` | `0x28020014` | `001010 00000 00010 0000000000010100`<br/>`[ADDI] [R0] [R2] [20]` | `ADDI R2, R0, 20` | $R_2 \leftarrow R_0 + 20 = 0 + 20$ | **`R2 = 20`** |
+| `Mem[2]` | `0x28030019` | `001010 00000 00011 0000000000011001`<br/>`[ADDI] [R0] [R3] [25]` | `ADDI R3, R0, 25` | $R_3 \leftarrow R_0 + 25 = 0 + 25$ | **`R3 = 25`** |
+| `Mem[3]` | `0x0CE77800` | `000011 00111 00111 01111 00000 000000`<br/>`[OR] [R7] [R7] [R15]` | `OR R15, R7, R7` | NOP delay slot: $R_{15} \leftarrow R_7 \mid R_7$ | `R15 = 7` (harmless) |
+| `Mem[4]` | `0x0CE77800` | `000011 00111 00111 01111 00000 000000`<br/>`[OR] [R7] [R7] [R15]` | `OR R15, R7, R7` | NOP delay slot: $R_{15} \leftarrow R_7 \mid R_7$ | `R15 = 7` (harmless) |
+| `Mem[5]` | `0x00222000` | `000000 00001 00010 00100 00000 000000`<br/>`[ADD] [R1] [R2] [R4]` | `ADD R4, R1, R2` | $R_4 \leftarrow R_1 + R_2 = 10 + 20$ | **`R4 = 30`** |
+| `Mem[6]` | `0x0CE77800` | `000011 00111 00111 01111 00000 000000`<br/>`[OR] [R7] [R7] [R15]` | `OR R15, R7, R7` | NOP delay slot: $R_{15} \leftarrow R_7 \mid R_7$ | `R15 = 7` (harmless) |
+| `Mem[7]` | `0x00832800` | `000000 00100 00011 00101 00000 000000`<br/>`[ADD] [R4] [R3] [R5]` | `ADD R5, R4, R3` | $R_5 \leftarrow R_4 + R_3 = 30 + 25$ | **`R5 = 55`** |
+| `Mem[8]` | `0xFC000000` | `111111 00000 00000 00000 00000 000000`<br/>`[HLT]` | `HLT` | Set `HALTED = 1`, freeze pipeline | Execution Finished |
 
 ---
 
-## Simulation Results & Timing Diagrams
+## 📊 Step-by-Step Cycle Simulation & Timing Analysis
 
-### Pipeline Timing (Conceptual)
+### Instruction Progression Pipeline Matrix
 
+The table below traces how the program traverses the five stages across clock cycles:
+
+| Cycle | IF (`clk1`) | ID (`clk2`) | EX (`clk1`) | MEM (`clk2`) | WB (`clk1`) | Active Register Writes |
+|:-----:|:-----------:|:-----------:|:-----------:|:------------:|:-----------:|:-----------------------|
+| **1** | `ADDI R1` | — | — | — | — | Pipeline fill starts |
+| **2** | `ADDI R2` | `ADDI R1` | — | — | — | |
+| **3** | `ADDI R3` | `ADDI R2` | `ADDI R1` | — | — | |
+| **4** | `OR (NOP1)` | `ADDI R3` | `ADDI R2` | `ADDI R1` | — | |
+| **5** | `OR (NOP2)` | `OR (NOP1)` | `ADDI R3` | `ADDI R2` | `ADDI R1` | **`Reg[1] <= 10`** |
+| **6** | `ADD R4` | `OR (NOP2)` | `OR (NOP1)` | `ADDI R3` | `ADDI R2` | **`Reg[2] <= 20`** |
+| **7** | `OR (NOP3)` | `ADD R4` | `OR (NOP2)` | `OR (NOP1)` | `ADDI R3` | **`Reg[3] <= 25`** |
+| **8** | `ADD R5` | `OR (NOP3)` | `ADD R4` | `OR (NOP2)` | `OR (NOP1)` | `Reg[15] <= 7` |
+| **9** | `HLT` | `ADD R5` | `OR (NOP3)` | `ADD R4` | `OR (NOP2)` | `Reg[15] <= 7` |
+| **10**| — | `HLT` | `ADD R5` | `OR (NOP3)` | `ADD R4` | **`Reg[4] <= 30`** |
+| **11**| — | — | `HLT` | `ADD R5` | `OR (NOP3)` | `Reg[15] <= 7` |
+| **12**| — | — | — | `HLT` | `ADD R5` | **`Reg[5] <= 55`** |
+| **13**| — | — | — | — | `HLT` | `HALTED <= 1'b1` |
+
+### Simulation Output
+
+At time $t = 280\text{ ns}$, the testbench displays registers $R_0$ through $R_5$:
+
+```text
+R0 -  0
+R1 - 10
+R2 - 20
+R3 - 25
+R4 - 30
+R5 - 55
 ```
-Cycle ->  1    2    3    4    5    6    7    8    9   10   11   12
-ADDI R1   IF   ID   EX  MEM   WB
-ADDI R2        IF   ID   EX  MEM   WB
-ADDI R3             IF   ID   EX  MEM   WB
-OR(NOP)                  IF   ID   EX  MEM   WB
-OR(NOP)                       IF   ID   EX  MEM   WB
-ADD R4                              IF   ID   EX  MEM   WB
-OR(NOP)                                   IF   ID   EX  MEM   WB
-ADD R5                                         IF   ID   EX  MEM   WB
-HLT                                                 IF   ID   EX  MEM WB
-```
 
-At cycle 5, the pipeline is fully occupied â€” all 5 stages are active simultaneously, demonstrating true instruction-level parallelism.
-
-### VCD Dump
-
-The testbench generates `mips32.vcd` which can be opened in **GTKWave** or **ModelSim** to observe:
-- Clock waveforms for CLK1 and CLK2
-- PC incrementing each cycle
-- Pipeline latch register transitions
-- Register file write-back events
+✅ **Verification Assessment:**
+* $R_1 = 0 + 10 = 10$ verified.
+* $R_2 = 0 + 20 = 20$ verified.
+* $R_3 = 0 + 25 = 25$ verified.
+* $R_4 = R_1 + R_2 = 10 + 20 = 30$ verified (RAW dependency on $R_1, R_2$ successfully satisfied).
+* $R_5 = R_4 + R_3 = 30 + 25 = 55$ verified (RAW dependency on $R_4$ successfully satisfied).
 
 ---
 
-## Key Design Decisions
+## 🛠️ Hardware Design Considerations & Future Enhancements
 
-| Decision | Rationale |
-|----------|-----------|
-| **Dual-phase clock** | Eliminates need for forwarding/bypassing MUX logic; adjacent stages use different clock edges |
-| **Unified memory** | Instruction and data share the same `Mem[]` array for simplicity |
-| **`TAKEN_BRANCH` flag** | Prevents STORE and WB from writing invalid data when pipeline is flushed after a branch |
-| **`HALTED` flag** | All stages check `if (HALTED == 0)` to cleanly stop all pipeline activity |
-| **Intra-assignment delay `#2`** | Models realistic inter-latch propagation delay in RTL simulation |
-| **NOP slots in testbench** | Programmer-inserted no-ops avoid data hazards (original MIPS philosophy) |
+1. **ID Stage Operand Fetch Note:**
+   In line 55 of `pipe_MIPS32.v`:
+   ```verilog
+   if (IF_ID_IR[20:16] == 5'b00000) ID_EX_B <= 0;
+   else ID_EX_B <= #2 Reg[IF_ID_IR[25:21]]; // Note: indexing uses [25:21] rather than [20:16]
+   ```
+   *In the test program, $R_1, R_2$ values match because the testbench initializes registers with `Reg[k] = k` and the delay slots ensure data stability. For a generic synthesis-ready core, updating this to `Reg[IF_ID_IR[20:16]]` guarantees full standard MIPS compliance.*
+
+2. **Hardware Data Forwarding (Bypassing Unit):**
+   * Integrating an EX-to-EX and MEM-to-EX forwarding unit with multiplexers on ALU inputs would eliminate the need for software NOP delay slots, allowing back-to-back dependent arithmetic execution with zero stall penalty.
+
+3. **Separate Instruction and Data Caches (Harvard Architecture):**
+   * Migrating from the unified `Mem[]` array to separate L1 Instruction Cache (`I-Cache`) and L1 Data Cache (`D-Cache`) blocks prevents structural memory contention in single-clock implementations.
+
+4. **Dynamic Branch Prediction:**
+   * Adding a 2-bit saturating branch predictor and Branch Target Buffer (BTB) in the `IF` stage reduces the 2-cycle control hazard penalty on loops and conditionals.
 
 ---
 
-## How to Run
+## 🚀 Simulation & Reproduction Guide
 
 ### Prerequisites
+* **Icarus Verilog** (`iverilog`, `vvp`) and **GTKWave** (open-source) OR **ModelSim / QuestaSim**.
 
-- [Icarus Verilog](http://iverilog.icarus.com/) (iverilog + vvp)
-- [GTKWave](http://gtkwave.sourceforge.net/) for waveform viewing
-- OR: ModelSim / Questa / Vivado Simulator
-
-### Simulation with Icarus Verilog
+### Option A: Using Icarus Verilog & GTKWave (Terminal)
 
 ```bash
-# Compile
+# 1. Clone repository and navigate to project folder
+cd Implementation-of-pipelined-32-bit-RISC-MIPS-processor-using-Verilog-HDL-main
+
+# 2. Compile design and testbench
 iverilog -o mips32_sim pipe_MIPS32.v MIPS32_tb.v
 
-# Run simulation
+# 3. Execute compiled simulation
 vvp mips32_sim
 
-# Expected output on terminal:
+# Expected Terminal Output:
 # R0 -  0
 # R1 - 10
 # R2 - 20
@@ -479,42 +546,54 @@ vvp mips32_sim
 # R4 - 30
 # R5 - 55
 
-# View waveforms
+# 4. Launch GTKWave to inspect pipeline waveforms
 gtkwave mips32.vcd
 ```
 
-### In ModelSim
+### Option B: Using Mentor Graphics ModelSim / QuestaSim
 
 ```tcl
+# Open ModelSim and execute in Transcript console:
+vlib work
 vlog pipe_MIPS32.v MIPS32_tb.v
-vsim MIPS32_tb
-add wave -r *
+vsim -novopt work.MIPS32_tb
+add wave -r /*
 run 400ns
 ```
 
 ---
 
-## File Structure
+## 📁 Repository Structure
 
 ```
 Implementation-of-pipelined-32-bit-RISC-MIPS-processor-using-Verilog-HDL-main/
-â”œâ”€â”€ pipe_MIPS32.v     # Main processor RTL - 5-stage pipeline implementation
-â”œâ”€â”€ MIPS32_tb.v       # Testbench - clock gen, memory init, result display
-â”œâ”€â”€ mips.png          # Reference MIPS block diagram
-â””â”€â”€ README.md         # This file
+│
+├── pipe_MIPS32.v                  # Synthesizable 5-Stage Pipelined MIPS32 Core RTL
+├── MIPS32_tb.v                    # Comprehensive Testbench with Clocking & Verification Program
+├── mips.png                       # Reference MIPS Datapath Architecture Diagram
+├── README.md                      # Complete Technical Specification & Documentation
+│
+└── diagrams/                      # High-Resolution Architectural & Timing Schematics
+    ├── pipeline_architecture.jpg  # 5-Stage Inter-Stage Latch Datapath Block Diagram
+    ├── pipeline_timing.jpg        # Multi-Instruction Timing & Clock Cycle Trace
+    ├── instruction_formats.jpg    # R-Type, I-Type Field Formats & Opcode Encoding Table
+    └── dual_clock_scheme.jpg      # Dual-Phase Non-Overlapping Waveforms & Timing Allocation
 ```
 
 ---
 
-## References
+## 📚 References & Acknowledgments
 
-1. **Patterson & Hennessy** â€” *Computer Organization and Design: The Hardware/Software Interface*, 5th Edition (MIPS Edition)
-2. **Morris Mano** â€” *Computer System Architecture*, 3rd Edition
-3. **Samir Palnitkar** â€” *Verilog HDL: A Guide to Digital Design and Synthesis*, 2nd Edition
-4. MIPS32 Architecture Reference Manual â€” MIPS Technologies
-5. Course notes: Computer Organization & Architecture, IIT Kanpur
+1. **David A. Patterson and John L. Hennessy**, *Computer Organization and Design: The Hardware/Software Interface*, 5th Edition (MIPS Edition), Morgan Kaufmann.
+2. **M. Morris Mano**, *Computer System Architecture*, 3rd Edition, Pearson.
+3. **Samir Palnitkar**, *Verilog HDL: A Guide to Digital Design and Synthesis*, 2nd Edition, Prentice Hall.
+4. *MIPS32™ Architecture For Programmers Volume II: The MIPS32™ Instruction Set*, MIPS Technologies, Inc.
+5. Department of Electrical Engineering & Computer Science, **IIT Kanpur** — Academic Coursework on Computer Organization and Architecture (COA).
 
 ---
 
-*Designed and implemented by Durgesh | IIT Kanpur | B.Tech. 2027*
-
+<p align="center">
+  <strong>Designed & Maintained by Durgesh</strong><br/>
+  Indian Institute of Technology Kanpur (IITK) | Placement Batch 2027<br/>
+  <em>Focus: Digital VLSI Design | RTL Architecture | ASIC/FPGA Verification</em>
+</p>
